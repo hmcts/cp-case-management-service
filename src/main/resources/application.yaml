@@ -1,25 +1,23 @@
 spring:
   application:
-    name: service-UPDATE-TO-BE-NAME-OF-SERVICE
+    name: cp-case-management-service
 
-server:
-  port: ${SERVER_PORT:8082}
+  # Disable SpringDoc auto-configuration
+  autoconfigure:
+    exclude: org.springdoc.core.configuration.SpringDocKotlinConfiguration
+  config:
+    import:
+      - "optional:classpath:application-datasource.yml"
+      - "optional:classpath:application-authz.yml"
+      - "optional:classpath:application-server-management.yml"
+  threads:
+    virtual:
+      enabled: ${VIRTUAL_THREADS:false}
 
-azure:
-  application-insights:
-    instrumentation-key: ${rpe.AppInsightsInstrumentationKey:00000000-0000-0000-0000-000000000000}
+courtlistpublishing:
+  system-user-id: ${CASEMANAGEMENT_SYSTEM_USER_ID:}
 
-management:
-  endpoints:
-    web:
-      base-path: /actuator
-      exposure:
-        include: health, info, prometheus
-  endpoint:
-    health:
-      probes:
-        enabled: true   # enables liveness / readiness groups
-
-logging:
-  level:
-    root: INFO
+common-platform-query-api:
+  base-url: ${CP_CM_BASE_URL:http://localhost:8080}
+  ssl:
+    verify: ${COMMON_PLATFORM_QUERY_API_SSL_VERIFY:false}
