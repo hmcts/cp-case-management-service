@@ -4,6 +4,7 @@ plugins {
   id 'org.springframework.boot' version '4.1.1'
   id 'io.spring.dependency-management' version '1.1.7'
   id 'jacoco'
+  id 'pmd'
   id 'maven-publish'
   id 'com.github.ben-manes.versions' version '0.65.0'
   id 'org.cyclonedx.bom' version '3.5.1'
@@ -43,38 +44,38 @@ tasks.withType(JavaExec).configureEach {
   javaLauncher.set(javaToolchains.launcherFor(java.toolchain))
 }
 
-//sourceSets {
-//  integrationTest {
-//    java {
-//      compileClasspath += sourceSets.main.output
-//      runtimeClasspath += sourceSets.main.output
-//
-//    }
-//    resources.srcDir file('src/integrationTest/resources')
-//  }
-//  pactVerificationTest {
-//    java {
-//      compileClasspath += sourceSets.main.output
-//      runtimeClasspath += sourceSets.main.output
-//      srcDir file('src/pactVerificationTest/java')
-//    }
-//    resources.srcDir file('src/pactVerificationTest/resources')
-//  }
-//}
+sourceSets {
+  integrationTest {
+    java {
+      compileClasspath += sourceSets.main.output
+      runtimeClasspath += sourceSets.main.output
 
-//configurations {
-//  integrationTestImplementation.extendsFrom testImplementation
-//  integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
-//
-//  //Uncomment when using pact tests
-//  pactVerificationTestImplementation.extendsFrom testImplementation
-//  pactVerificationTestRuntimeOnly.extendsFrom runtimeOnly
-//
-//  // Ensure testRuntimeClasspath can be resolved for agent injection
-//  testRuntimeClasspath {
-//    canBeResolved = true
-//  }
-//}
+    }
+    resources.srcDir file('src/integrationTest/resources')
+  }
+  pactVerificationTest {
+    java {
+      compileClasspath += sourceSets.main.output
+      runtimeClasspath += sourceSets.main.output
+      srcDir file('src/pactVerificationTest/java')
+    }
+    resources.srcDir file('src/pactVerificationTest/resources')
+  }
+}
+
+configurations {
+  integrationTestImplementation.extendsFrom testImplementation
+  integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+
+  //Uncomment when using pact tests
+  pactVerificationTestImplementation.extendsFrom testImplementation
+  pactVerificationTestRuntimeOnly.extendsFrom runtimeOnly
+
+  // Ensure testRuntimeClasspath can be resolved for agent injection
+  testRuntimeClasspath {
+    canBeResolved = true
+  }
+}
 
 // We MUST keep all dependencies in the build.gradle to allow dependabot to provide version updates
 // Sadly, dependabot does not track dependencies in the apply-from files
@@ -99,10 +100,37 @@ dependencies {
   // --- Observability / Actuator / OTEL / Prometheus ---
   implementation 'org.springframework.boot:spring-boot-starter-actuator'
   implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+  implementation 'io.micrometer:micrometer-registry-prometheus'
+
+  // --- Data / DB ---
+  implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+  implementation 'org.postgresql:postgresql'
+  implementation 'org.springframework.boot:spring-boot-starter-flyway'
+  implementation 'org.flywaydb:flyway-core'
+  implementation 'org.flywaydb:flyway-database-postgresql'
 
   // Security: pin transitive tomcat-embed-core to patched version (CVE-2026-41293, -43512, et al.)
   // Brought in transitively via spring-boot-starter-web; >=11.0.0-M1,<11.0.22 are vulnerable
   implementation 'org.apache.tomcat.embed:tomcat-embed-core:11.0.26'
+
+  testImplementation(platform('org.junit:junit-bom:6.0.0'))
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+  testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+
+
+  // integrationTestImplementation dependencies are needed as they aren't always propagated as expected,
+  // especially with platform BOMs, test runtime dependencies, or custom tasks.
+  integrationTestImplementation platform('org.junit:junit-bom:6.0.0')
+  integrationTestRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+  integrationTestImplementation('org.springframework.boot:spring-boot-starter-test') {
+    exclude group: 'junit', module: 'junit'
+    exclude group: 'org.junit.vintage', module: 'junit-vintage-engine'
+  }
+  integrationTestImplementation 'org.wiremock:wiremock-standalone:3.9.1'
+  integrationTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+  integrationTestCompileOnly 'org.projectlombok:lombok:1.18.48'
+  integrationTestAnnotationProcessor 'org.projectlombok:lombok:1.18.48'
 }
 
 
@@ -151,12 +179,11 @@ tasks.named("dependencyUpdates").configure {
 
 //Creation of Software Bill of Materials
 //https://github.com/CycloneDX/cyclonedx-gradle-plugin
-cyclonedxBom {
+cyclonedxDirectBom {
   includeConfigs = ["runtimeClasspath"]
   skipConfigs = ["compileClasspath", "testImplementation", "testCompileClasspath", "testRuntimeClasspath"]
-  schemaVersion = "1.6"
+  schemaVersion = "VERSION_16"
   componentVersion = providers.provider { project.version.toString() }
-  destination = layout.buildDirectory.dir("reports").get().asFile
 }
 
 tasks.withType(AbstractArchiveTask).configureEach {
@@ -201,11 +228,11 @@ tasks.named('composeBuild') { dependsOn tasks.named('bootJar') }
 
 dockerCompose {
   useComposeFiles = ['docker/docker-compose.integration.yml']
-  startedServices = ['app', 'db', 'wiremock', 'azurite']
+  startedServices = ['app', 'db', 'wiremock']
 
   buildBeforeUp = true
   waitForTcpPorts = true
-  upAdditionalArgs = ['--wait', '--wait-timeout', '120']
+  upAdditionalArgs = ['--wait']
 
   captureContainersOutput = true
   removeOrphans = true
@@ -242,15 +269,15 @@ tasks.named('test') {
   }
 }
 
-//tasks.named('build') {
-//  dependsOn tasks.named('test')
-//  dependsOn tasks.named('integration')
-//}
+tasks.named('build') {
+  dependsOn tasks.named('test')
+  dependsOn tasks.named('integration')
+}
 
 // Run integration tests as part of check, after unit tests
-//tasks.named('check') {
-//  dependsOn tasks.named('integration')
-//}
+tasks.named('check') {
+  dependsOn tasks.named('integration')
+}
 
 tasks.named('jacocoTestReport') {
   dependsOn tasks.named('test')
@@ -265,64 +292,64 @@ tasks.named('jacocoTestReport') {
   }
 }
 
-//tasks.register('integration', Test) {
-//  description = "Runs integration tests against docker-compose stack"
-//  group = "Verification"
-//
-//  mustRunAfter tasks.named('test')
-//
-//  testClassesDirs = sourceSets.integrationTest.output.classesDirs
-//  classpath       = sourceSets.integrationTest.runtimeClasspath
-//  useJUnitPlatform()
-//
-//  dependsOn tasks.composeUp
-//  //finalizedBy tasks.composeDown
-//
-//  systemProperty 'app.baseUrl', "http://localhost:${serverPort}/courtlistpublishing-service"
-//  systemProperty 'wiremock.baseUrl', 'http://localhost:8089'
-//
-//  jvmArgs = ['-Xshare:off']
-//  testLogging {
-//    events "passed", "skipped", "failed"
-//    exceptionFormat = 'full'
-//    showStandardStreams = true
-//  }
-//}
+tasks.register('integration', Test) {
+  description = "Runs integration tests against docker-compose stack"
+  group = "Verification"
 
-//tasks.named('processIntegrationTestResources') {
-//  // prevent duplicate resource collisions (e.g., application-docker-it.yml)
-//  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-//}
+  mustRunAfter tasks.named('test')
 
-//// ADD when added PACT
-//tasks.register('pactVerificationTest', Test) {
-//  description = "Runs Pact provider verification tests"
-//  group = "Verification"
-//  testClassesDirs = sourceSets.pactVerificationTest.output.classesDirs
-//  classpath = sourceSets.pactVerificationTest.runtimeClasspath
-//  useJUnitPlatform {
-//    includeTags 'pact'
-//  }
-//  failFast = true
-//
-//  def sysOrEnv = { String key ->
-//    System.getProperty(key) ?: System.getenv(key.toUpperCase().replace('.', '_'))
-//  }
-//  systemProperty 'pact.broker.url', sysOrEnv('pact.broker.url')
-//  systemProperty 'pact.broker.token', sysOrEnv('pact.broker.token')
-//  systemProperty 'pact.provider.version', sysOrEnv('pact.provider.version')
-//  systemProperty 'pact.provider.branch', sysOrEnv('pact.provider.branch')
-//  systemProperty 'pact.verifier.publishResults', sysOrEnv('pact.verifier.publishResults')
-//  systemProperty 'pact.env', sysOrEnv('pact.env') ?: 'local'
-//  reports {
-//    junitXml.required.set(true)
-//    html.required.set(true)
-//  }
-//}
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  classpath       = sourceSets.integrationTest.runtimeClasspath
+  useJUnitPlatform()
 
-//tasks.named('processPactVerificationTestResources') {
-//  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-//}
+  dependsOn tasks.composeUp
+  //finalizedBy tasks.composeDown
+
+  systemProperty 'app.baseUrl', "http://localhost:${serverPort}/casemanagement-service"
+  systemProperty 'wiremock.baseUrl', 'http://localhost:8089'
+
+  jvmArgs = ['-Xshare:off']
+  testLogging {
+    events "passed", "skipped", "failed"
+    exceptionFormat = 'full'
+    showStandardStreams = true
+  }
+}
+
+tasks.named('processIntegrationTestResources') {
+  // prevent duplicate resource collisions (e.g., application-docker-it.yml)
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// ADD when added PACT
+tasks.register('pactVerificationTest', Test) {
+  description = "Runs Pact provider verification tests"
+  group = "Verification"
+  testClassesDirs = sourceSets.pactVerificationTest.output.classesDirs
+  classpath = sourceSets.pactVerificationTest.runtimeClasspath
+  useJUnitPlatform {
+    includeTags 'pact'
+  }
+  failFast = true
+
+  def sysOrEnv = { String key ->
+    System.getProperty(key) ?: System.getenv(key.toUpperCase().replace('.', '_'))
+  }
+  systemProperty 'pact.broker.url', sysOrEnv('pact.broker.url')
+  systemProperty 'pact.broker.token', sysOrEnv('pact.broker.token')
+  systemProperty 'pact.provider.version', sysOrEnv('pact.provider.version')
+  systemProperty 'pact.provider.branch', sysOrEnv('pact.provider.branch')
+  systemProperty 'pact.verifier.publishResults', sysOrEnv('pact.verifier.publishResults')
+  systemProperty 'pact.env', sysOrEnv('pact.env') ?: 'local'
+  reports {
+    junitXml.required.set(true)
+    html.required.set(true)
+  }
+}
+
+tasks.named('processPactVerificationTestResources') {
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 /* ---------------- Publishing ---------------- */
 

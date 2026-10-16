@@ -14,7 +14,7 @@ spring:
     virtual:
       enabled: ${VIRTUAL_THREADS:false}
 
-courtlistpublishing:
+casemanagement:
   system-user-id: ${CASEMANAGEMENT_SYSTEM_USER_ID:}
 
 common-platform-query-api:

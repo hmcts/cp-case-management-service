@@ -58,8 +58,6 @@ services:
         condition: service_healthy
       wiremock:
         condition: service_started
-      azurite:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${SERVER_PORT:-8082}/casemanagement-service/actuator/health || exit 1"]
       interval: 10s
