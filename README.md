@@ -151,3 +151,7 @@ Contributions are welcome! Please see the [CONTRIBUTING.md](.github/CONTRIBUTING
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
+
+------
+
+TODO - need to add information about functional information and technical information to run the project local and more information about the project. 
