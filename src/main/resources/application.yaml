@@ -1,6 +1,6 @@
 spring:
   application:
-    name: cp-case-management-service
+    name: service-cp-civil-caseadmin-case-management
 
   # Disable SpringDoc auto-configuration
   autoconfigure:
